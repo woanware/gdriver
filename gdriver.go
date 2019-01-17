@@ -41,6 +41,7 @@ func init() {
 		"modifiedTime",
 		"name",
 		"size",
+		"appProperties",
 	}
 	listFields = []googleapi.Field{
 		googleapi.Field(fmt.Sprintf("files(%s)", googleapi.CombineFields(fileInfoFields))),
@@ -144,6 +145,7 @@ func (d *GDriver) makeDirectoryByParts(pathParts []string) (*FileInfo, error) {
 			if !parentNode.IsDir() {
 				return nil, fmt.Errorf("unable to create directory in `%s': `%s' is not a directory", path.Join(pathParts[:i]...), parentNode.Name())
 			}
+
 			var createdDir *drive.File
 			createdDir, err = d.srv.Files.Create(&drive.File{
 				Name:     sanitizeName(pathParts[i]),
@@ -217,6 +219,17 @@ func (d *GDriver) GetFile(path string) (*FileInfo, io.ReadCloser, error) {
 	return file, response.Body, nil
 }
 
+// GetFileById gets a file and returns a ReadCloser that can consume the body of the file
+func (d *GDriver) GetFileById(id string) (io.ReadCloser, error) {
+
+	response, err := d.srv.Files.Get(id).Download()
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Body, nil
+}
+
 // GetFileHash returns the hash of a file with the present method
 func (d *GDriver) GetFileHash(path string, method HashMethod) (*FileInfo, []byte, error) {
 	switch method {
@@ -237,7 +250,7 @@ func (d *GDriver) GetFileHash(path string, method HashMethod) (*FileInfo, []byte
 
 // PutFile uploads a file to the specified path
 // it creates non existing directories
-func (d *GDriver) PutFile(filePath string, r io.Reader) (*FileInfo, error) {
+func (d *GDriver) PutFile(filePath string, appProperties map[string]string, r io.Reader) (*FileInfo, error) {
 	pathParts := strings.FieldsFunc(filePath, isPathSeperator)
 	amountOfParts := len(pathParts)
 	if amountOfParts <= 0 {
@@ -264,6 +277,7 @@ func (d *GDriver) PutFile(filePath string, r io.Reader) (*FileInfo, error) {
 			Parents: []string{
 				parentNode.item.Id,
 			},
+			AppProperties: appProperties,
 		},
 	).Fields(fileInfoFields...).Media(r).Do()
 	if err != nil {
@@ -398,6 +412,27 @@ func (d *GDriver) ListTrash(filePath string, fileFunc func(f *FileInfo) error) e
 	}
 	return nil
 }
+
+// //
+// func (d *GDriver) FolderExists(path string) (*FileInfo, error) {
+
+// 	file, err := d.getFile(d.rootNode, path)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	if file == d.rootNode {
+// 		return nil, errors.New("root cannot be renamed")
+// 	}
+
+// 	newFile, err := d.srv.Files.Update(file.item.Id, &drive.File{
+// 		Name: sanitizeName(newNameParts[amountOfParts-1]),
+// 	}).Fields(fileInfoFields...).Do()
+// 	return &FileInfo{
+// 		item:       newFile,
+// 		parentPath: file.parentPath,
+// 	}, nil
+// }
 
 func getRootNode(srv *drive.Service) (*FileInfo, error) {
 	root, err := srv.Files.Get("root").Fields(fileInfoFields...).Do()
